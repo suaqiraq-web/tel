@@ -1,6 +1,7 @@
 #!/bin/sh
 set -e
 
+# The Railway TCP Proxy target is configured as port 443.
 export PORT=443
 
 mkdir -p /data
