@@ -8,9 +8,11 @@ import urllib.request
 from datetime import date, timedelta
 
 TOKEN = os.environ.get("BOT_TOKEN", "")
-PUBLIC_IP = os.environ.get("PUBLIC_IP", "")
+PUBLIC_IP = (os.environ.get("PUBLIC_IP") or
+             os.environ.get("RAILWAY_TCP_PROXY_DOMAIN", ""))
 PORT = os.environ.get("PORT", "443")
-EXT_PORT = os.environ.get("EXTERNAL_PORT", PORT)
+EXT_PORT = (os.environ.get("EXTERNAL_PORT") or
+            os.environ.get("RAILWAY_TCP_PROXY_PORT") or PORT)
 ADMIN_TG_ID = os.environ.get("ADMIN_TG_ID", "")
 CONTACT = os.environ.get("SUBSCRIBE_CONTACT", "@fadl22b")
 PRICE = os.environ.get("PRICE_MONTHLY", "1500 دينار عراقي")
@@ -19,20 +21,18 @@ DATA = "/data/subs.json"
 TLS_DOMAIN_HEX = "7777772e676f6f676c652e636f6d"
 
 OWNER_HELP = ("أوامر التحكم (خاصة بالمالك)\n\n"
-    "الكل — عرض قائمة كل المشتركين والإحصائيات\n"
-    "بحث اسم — البحث عن مشترك برابطه/يوزره\n"
-    "اضف اسم عدد-الأيام — إضافة مشترك جديد\n"
-    "تعديل اسم عدد-الأيام — تعديل مدة الاشتراك\n"
-    "وقف اسم — إيقاف اشتراك مشترك\n"
-    "تفعيل اسم — إعادة تفعيل المشترك\n"
-    "ربط اسم ip — ربط عنوان IP بمشترك\n"
-    "معلومات اسم — عرض تفاصيل مشترك معين\n"
-    "حذف اسم — حذف المشترك نهائياً")
+    "/all — كل المشتركين\n"
+    "/add اسم عدد-الأيام — مشترك جديد\n"
+    "/plan اسم عدد-الأيام — تعديل المدة\n"
+    "/stop اسم — إيقاف\n"
+    "/on اسم — تفعيل\n"
+    "/ip اسم ip — ربط IP\n"
+    "/info اسم — التفاصيل\n"
+    "/del اسم — حذف نهائي")
 
 
 def load():
     try:
-        os.makedirs(os.path.dirname(DATA), exist_ok=True)
         with open(DATA) as f:
             return json.load(f)
     except Exception:
@@ -40,11 +40,8 @@ def load():
 
 
 def save(db):
-    folder = os.path.dirname(DATA)
-    if folder:
-        os.makedirs(folder, exist_ok=True)
     tmp = DATA + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
+    with open(tmp, "w") as f:
         json.dump(db, f, ensure_ascii=False, indent=2)
     os.replace(tmp, DATA)
 
@@ -163,66 +160,26 @@ def owner_handle(chat_id, text):
     args = parts[1:]
     db = load()
 
-    if cmd in ("start", "help", "menu", "الاوامر", "الأوامر", "تعليمات"):
+    if cmd in ("start", "help", "menu"):
         send(chat_id, OWNER_HELP)
         return
 
-    # عرض جميع المشتركين والإحصائيات الكلية
-    if cmd in ("الكل", "all"):
+    if cmd == "all":
         subs = db.get("subscribers", {})
-        free_used = db.get("free_used", [])
-        
-        active_cnt = sum(1 for s in subs.values() if s.get("active", True))
-        stopped_cnt = len(subs) - active_cnt
-        total_free = len(free_used)
-        
-        header = (
-            "📊 **إحصائيات البوت:**\n"
-            "• إجمالي المشتركين الحاليين: %d\n"
-            "• المفعلين: %d | الموقوفين: %d\n"
-            "• مستخدمي التجربة المجانية الكلي: %d\n\n"
-            "📋 **قائمة المشتركين:**\n"
-        ) % (len(subs), active_cnt, stopped_cnt, total_free)
-
         if not subs:
-            send(chat_id, header + "لا يوجد مشتركين مسجلين بعد.")
+            send(chat_id, "لا يوجد مشتركين.")
             return
-
         lines = []
         for name, s in subs.items():
             st = "\U0001F7E2" if s.get("active", True) else "\U0001F534"
             exp = s.get("expiry", "-")
             lines.append("%s %s — حتى %s" % (st, name, exp))
-        
-        send(chat_id, header + "\n".join(lines))
+        send(chat_id, "المشتركين (%d):\n\n%s" % (len(subs), "\n".join(lines)))
         return
 
-    # البحث عن اسم مشترك أو يوزر
-    if cmd in ("بحث", "search"):
-        if not args:
-            send(chat_id, "يرجى كتابة الاسم للبحث. مثال: بحث علي")
-            return
-        query = args[0].lstrip("@").lower()
-        subs = db.get("subscribers", {})
-        results = [name for name in subs if query in name.lower()]
-        
-        if not results:
-            send(chat_id, "لم يتم العثور على أي مشترك يحتوي على: " + query)
-            return
-            
-        lines = []
-        for name in results:
-            s = subs[name]
-            st = "\U0001F7E2" if s.get("active", True) else "\U0001F534"
-            lines.append("%s %s — ينتهي: %s" % (st, name, s.get("expiry", "-")))
-            
-        send(chat_id, "🔎 نتائج البحث (%d):\n\n%s" % (len(results), "\n".join(lines)))
-        return
-
-    # إضافة تعديل أو مشترك جديد
-    if cmd in ("اضف", "أضف", "add", "تعديل", "plan"):
+    if cmd in ("add", "plan"):
         if len(args) < 1:
-            send(chat_id, "استخدام: اضف اسم [عدد الأيام]")
+            send(chat_id, "استخدام: /%s اسم [عدد الأيام]" % cmd)
             return
         name = args[0].lstrip("@")
         days = parse_days(args[1]) if len(args) > 1 else 2
@@ -230,9 +187,9 @@ def owner_handle(chat_id, text):
             send(chat_id, "المدة غير صحيحة.")
             return
         subs = db.setdefault("subscribers", {})
-        if cmd in ("اضف", "أضف", "add"):
+        if cmd == "add":
             if name in subs:
-                send(chat_id, "الاسم مسجل مسبقاً. استخدم أمر (معلومات اسم) للتفاصيل.")
+                send(chat_id, "الاسم مسجل مسبقًا. استخدم /info لمنظر التفاصيل.")
                 return
             sub = {
                 "secret": secrets.token_hex(16),
@@ -244,11 +201,11 @@ def owner_handle(chat_id, text):
             }
             subs[name] = sub
             save(db)
-            send(chat_id, "تم التسجيل بنجاح:\n\n" + fmt_sub(name, sub))
+            send(chat_id, "تم التسجيل:\n\n" + fmt_sub(name, sub))
         else:
             sub = subs.get(name)
             if not sub:
-                send(chat_id, "هذا المشترك غير مسجل.")
+                send(chat_id, "غير مسجل.")
                 return
             sub["plan"] = "%dd" % days
             sub["expiry"] = expiry_str(days)
@@ -256,10 +213,9 @@ def owner_handle(chat_id, text):
             send(chat_id, "تم تعديل مدة %s — تنتهي %s" % (name, sub["expiry"]))
         return
 
-    # التحكم المباشر بالعربي
-    if cmd in ("وقف", "تفعيل", "ربط", "معلومات", "حذف", "stop", "on", "ip", "info", "del"):
+    if cmd in ("stop", "on", "ip", "info", "del"):
         if not args:
-            send(chat_id, "استخدام: %s اسم" % cmd)
+            send(chat_id, "استخدام: /%s اسم ..." % cmd)
             return
         name = args[0].lstrip("@")
         subs = db.get("subscribers", {})
@@ -267,30 +223,31 @@ def owner_handle(chat_id, text):
         if not sub:
             send(chat_id, "الاسم %s غير مسجل." % name)
             return
-            
-        if cmd in ("وقف", "stop"):
+        if cmd == "stop":
             sub["active"] = False
             save(db)
-            send(chat_id, "تم إيقاف %s — سيتم قطع اتصاله." % name)
-        elif cmd in ("تفعيل", "on"):
+            send(chat_id, "تم إيقاف %s — بعد دقيقة يقطع اتصاله." % name)
+        elif cmd == "on":
             sub["active"] = True
             save(db)
             send(chat_id, "تم تفعيل %s." % name)
-        elif cmd in ("ربط", "ip"):
+        elif cmd == "ip":
             ip = args[1] if len(args) > 1 else ""
             if ip and not re.match(r"^[0-9a-fA-F:.]{3,45}$", ip):
-                send(chat_id, "عنوان IP غير صحيح.")
+                send(chat_id, "IP غير صحيح.")
                 return
             sub["ip"] = ip
             save(db)
             send(chat_id, "تم ربط %s بالـ IP: %s" % (name, ip if ip else "— (مسح الربط)"))
-        elif cmd in ("معلومات", "info"):
+        elif cmd == "info":
             send(chat_id, fmt_sub(name, sub))
-        elif cmd in ("حذف", "del"):
+        elif cmd == "del":
             del subs[name]
             save(db)
-            send(chat_id, "تم حذف %s نهائياً." % name)
+            send(chat_id, "تم حذف %s نهائيًا." % name)
         return
+
+    send(chat_id, "أمر غير معروف. اكتب /help")
 
 
 def user_handle(chat_id, text, user_from):
@@ -314,7 +271,7 @@ def handle(update):
             if not is_owner(chat_id, db):
                 grant_trial(chat_id, user_from)
             else:
-                send(chat_id, "أنت المالك! اكتب (الاوامر) لرؤية قائمة التحكم.")
+                send(chat_id, "أنت المالك، عندك صلاحية دائمة 😉")
         return
 
     msg = update.get("message")
@@ -330,7 +287,7 @@ def handle(update):
     if db.get("admin_id") is None and not ADMIN_TG_ID:
         db["admin_id"] = chat_id
         save(db)
-        send(chat_id, "تهانينا! أنت الآن المالك. اكتب (الاوامر) لفتح اللوحة.")
+        send(chat_id, "تهانينا! أنت الآن المالك. اكتب /help للأوامر.")
         return
 
     if is_owner(chat_id, db):
