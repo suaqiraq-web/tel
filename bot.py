@@ -8,11 +8,11 @@ import urllib.request
 from datetime import date, timedelta
 
 TOKEN = os.environ.get("BOT_TOKEN", "")
-PUBLIC_IP = (os.environ.get("PUBLIC_IP") or
-             os.environ.get("RAILWAY_TCP_PROXY_DOMAIN", ""))
+PUBLIC_IP = (os.environ.get("RAILWAY_TCP_PROXY_DOMAIN") or
+             "mainline.proxy.rlwy.net")
 PORT = os.environ.get("PORT", "443")
-EXT_PORT = (os.environ.get("EXTERNAL_PORT") or
-            os.environ.get("RAILWAY_TCP_PROXY_PORT") or PORT)
+EXT_PORT = (os.environ.get("RAILWAY_TCP_PROXY_PORT") or
+            "26499")
 ADMIN_TG_ID = os.environ.get("ADMIN_TG_ID", "")
 CONTACT = os.environ.get("SUBSCRIBE_CONTACT", "@fadl22b")
 PRICE = os.environ.get("PRICE_MONTHLY", "1500 دينار عراقي")
