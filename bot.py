@@ -20,6 +20,8 @@ API = "https://api.telegram.org/bot%s" % TOKEN
 DATA = "/data/subs.json"
 TLS_DOMAIN_HEX = "7777772e676f6f676c652e636f6d"
 
+os.makedirs(os.path.dirname(DATA), exist_ok=True)
+
 OWNER_HELP = ("أوامر التحكم (خاصة بالمالك)\n\n"
     "/all — كل المشتركين\n"
     "/add اسم عدد-الأيام — مشترك جديد\n"
@@ -40,6 +42,7 @@ def load():
 
 
 def save(db):
+    os.makedirs(os.path.dirname(DATA), exist_ok=True)
     tmp = DATA + ".tmp"
     with open(tmp, "w") as f:
         json.dump(db, f, ensure_ascii=False, indent=2)
